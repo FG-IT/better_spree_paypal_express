@@ -10,7 +10,7 @@ SpreePaypalExpress = {
     },
     isButtonHidden: function () {
         paymentMethod = this.checkedPaymentMethod();
-        return (!$('#use_existing_card_yes:checked').length && SpreePaypalExpress.paymentMethodID && paymentMethod.val() == SpreePaypalExpress.paymentMethodID);
+        return (SpreePaypalExpress.paymentMethodID && paymentMethod.val() === SpreePaypalExpress.paymentMethodID);
     },
     checkedPaymentMethod: function () {
         return $('div[data-hook="checkout_payment_step"] input[type="radio"][name="order[payments_attributes][][payment_method_id]"]:checked');
@@ -35,7 +35,6 @@ document.addEventListener('turbolinks:load', function () {
     paymentMethods = $('div[data-hook="checkout_payment_step"] input[type="radio"]').click(function (e) {
         SpreePaypalExpress.updateSaveAndContinueVisibility();
     });
-
     var paypal_logo_tag = $('#paypal-image-logo')
     $('div[data-hook="checkout_payment_step"] .payment-option').each(function () {
         var radio = $(this).find('input[type="radio"][name="order[payments_attributes][][payment_method_id]')
