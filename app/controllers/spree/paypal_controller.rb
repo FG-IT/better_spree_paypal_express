@@ -17,12 +17,12 @@ module Spree
         next if tax_adjustments.include?(adjustment) || shipping_adjustments.include?(adjustment)
 
         items << {
-          Name: adjustment.label,
-          Quantity: 1,
-          Amount: {
-            currencyID: order.currency,
-            value: adjustment.amount
-          }
+            Name: adjustment.label,
+            Quantity: 1,
+            Amount: {
+                currencyID: order.currency,
+                value: adjustment.amount
+            }
         }
       end
 
@@ -45,13 +45,14 @@ module Spree
     def confirm
       order = current_order || raise(ActiveRecord::RecordNotFound)
       order.payments.create!({
-        source: Spree::PaypalExpressCheckout.create({
-          token: params[:token],
-          payer_id: params[:PayerID]
-        }),
-        amount: order.total,
-        payment_method: payment_method
-      })
+                                 source: Spree::PaypalExpressCheckout.create({
+                                                                                 token: params[:token],
+                                                                                 payer_id: params[:PayerID]
+                                                                             }),
+                                 amount: order.total,
+                                 payment_method: payment_method,
+                                 response_code: params[:token]
+                             })
       order.next
       if order.complete?
         flash.notice = Spree.t(:order_processed_successfully)
@@ -85,15 +86,15 @@ module Spree
     end
 
     def express_checkout_request_details order, items
-      { SetExpressCheckoutRequestDetails: {
+      {SetExpressCheckoutRequestDetails: {
           InvoiceID: order.number,
           BuyerEmail: order.email,
           ReturnURL: confirm_paypal_url(payment_method_id: params[:payment_method_id], utm_nooverride: 1),
-          CancelURL:  cancel_paypal_url,
+          CancelURL: cancel_paypal_url,
           SolutionType: payment_method.preferred_solution.present? ? payment_method.preferred_solution : "Mark",
           LandingPage: payment_method.preferred_landing_page.present? ? payment_method.preferred_landing_page : "Billing",
           cppheaderimage: payment_method.preferred_logourl.present? ? payment_method.preferred_logourl : "",
-          NoShipping: 1,
+          NoShipping: payment_method.preferred_no_shipping.present? ? payment_method.preferred_no_shipping : 0,
           PaymentDetails: [payment_details(items)]
       }}
     end
@@ -120,33 +121,33 @@ module Spree
         # Paypal does not support no items or a zero dollar ItemTotal
         # This results in the order summary being simply "Current purchase"
         {
-          OrderTotal: {
-            currencyID: current_order.currency,
-            value: current_order.total
-          }
+            OrderTotal: {
+                currencyID: current_order.currency,
+                value: current_order.total
+            }
         }
       else
         {
-          OrderTotal: {
-            currencyID: current_order.currency,
-            value: current_order.total
-          },
-          ItemTotal: {
-            currencyID: current_order.currency,
-            value: item_sum
-          },
-          ShippingTotal: {
-            currencyID: current_order.currency,
-            value: shipment_sum,
-          },
-          TaxTotal: {
-            currencyID: current_order.currency,
-            value: current_order.additional_tax_total
-          },
-          ShipToAddress: address_options,
-          PaymentDetailsItem: items,
-          ShippingMethod: "Shipping Method Name Goes Here",
-          PaymentAction: "Sale"
+            OrderTotal: {
+                currencyID: current_order.currency,
+                value: current_order.total
+            },
+            ItemTotal: {
+                currencyID: current_order.currency,
+                value: item_sum
+            },
+            ShippingTotal: {
+                currencyID: current_order.currency,
+                value: shipment_sum,
+            },
+            TaxTotal: {
+                currencyID: current_order.currency,
+                value: current_order.additional_tax_total
+            },
+            ShipToAddress: address_options,
+            PaymentDetailsItem: items,
+            ShippingMethod: "Shipping Method Name Goes Here",
+            PaymentAction: payment_method.auto_capture? ? "Sale" : "Authorization"
         }
       end
     end
