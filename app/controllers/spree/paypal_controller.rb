@@ -50,8 +50,7 @@ module Spree
                                                                                  payer_id: params[:PayerID]
                                                                              }),
                                  amount: order.total,
-                                 payment_method: payment_method,
-                                 response_code: params[:token]
+                                 payment_method: payment_method
                              })
       order.next
       if order.complete?
