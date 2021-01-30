@@ -18,7 +18,7 @@ module Spree
     end
 
     def can_credit?(_payment)
-      %w(settled settling).include? state
+      %w(settled settling complete).include? state
     end
 
   end

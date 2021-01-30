@@ -76,6 +76,12 @@ module Spree
       do_void_response
     end
 
+    def credit(credit_cents, transaction_id, _options)
+      payment = _options[:originator].payment
+      refund(payment, credit_cents / 100)
+    end
+
+
     def refund(payment, amount)
       refund_type = payment.amount == amount.to_f ? "Full" : "Partial"
       refund_transaction = provider.build_refund_transaction({
@@ -151,6 +157,3 @@ module Spree
     end
   end
 end
-
-#   payment.state = 'completed'
-#   current_order.state = 'complete'
