@@ -8,7 +8,6 @@ module Spree
     preference :solution, :string, default: 'Mark'
     preference :landing_page, :string, default: 'Billing'
     preference :logourl, :string, default: ''
-    preference :no_shipping, :integer, default: 0
     preference :auto_capture, :integer, default: 0
 
     def supports?(source)
@@ -72,13 +71,12 @@ module Spree
       if do_void_response.success?
         Spree::PaypalExpressCheckout.find_by(transaction_id: transaction_id).update(state: 'voided')
       end
-      # do_void_response.authorization = token
       do_void_response
     end
 
     def credit(credit_cents, transaction_id, _options)
       payment = _options[:originator].payment
-      refund(payment, credit_cents / 100)
+      refund(payment, credit_cents.to_f / 100)
     end
 
 
