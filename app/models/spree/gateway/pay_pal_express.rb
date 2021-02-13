@@ -9,7 +9,7 @@ module Spree
     preference :landing_page, :string, default: 'Billing'
     preference :logourl, :string, default: ''
     preference :auto_capture, :integer, default: 0
-
+    preference :no_shipping, :integer, default: 0
     def supports?(source)
       true
     end
@@ -60,7 +60,6 @@ module Spree
     end
 
     def void(token, _data)
-
       source = Spree::PaypalExpressCheckout.find_by(token: token)
       transaction_id = source.transaction_id
       void_transaction = provider.build_do_void({
