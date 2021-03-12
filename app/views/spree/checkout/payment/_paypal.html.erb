@@ -2,10 +2,9 @@
   <%= link_to(image_tag("https://www.paypal.com/en_US/i/btn/btn_xpressCheckout.gif"), paypal_express_url(:payment_method_id => payment_method.id), :method => :post, :id => "paypal_button") %>
 </div>
 
-<p>No PayPal account is required. Visa, MasterCard, Discover, and American Express cards are accepted.</p>
+<p>After clicking "Complete order", you will be redirected to PayPal to complete your purchase securely with PayPal account or Credit Cards.</p>
 
-<p>After clicking “Complete order”, you will be redirected to PayPal to complete your purchase securely with PayPal account or Credit Cards.</p>
-
+<p>No PayPal account is required. Major credit cards like Visa, MasterCard, Discover, and American Express cards are accepted.</p>
 
 <div id="paypal-image-logo" style="display: none"><%= image_tag("paypal.png") %></div>
 <script>
