@@ -10,6 +10,7 @@ module Spree
     preference :logourl, :string, default: ''
     preference :auto_capture, :integer, default: 0
     preference :no_shipping, :integer, default: 0
+
     def supports?(source)
       true
     end
@@ -59,9 +60,34 @@ module Spree
       @do_capture_response = api.do_capture(@do_capture) if request.post?
     end
 
-    def void(token, _data)
-      source = Spree::PaypalExpressCheckout.find_by(token: token)
+
+    def credit(credit_cents, transaction_id, _options)
+      payment = _options[:originator].payment
+      refund(payment, credit_cents.to_f / 100)
+    end
+
+    def cancel(response_code, _source, payment)
+      if response_code.nil?
+        logger.info payment.money.amount_in_cents
+        logger.info _source.transaction_id
+        source = _source
+      else
+        source = Spree::PaypalExpressCheckout.find_by(token: response_code)
+      end
+
+      if payment.present? and source.can_credit? payment
+        refund(payment, payment.money.amount_in_cents.to_f / 100)
+      else
+        void(source, nil)
+      end
+
+
+    end
+
+    def void(source, _data)
       transaction_id = source.transaction_id
+      logger.info source
+      logger.info transaction_id
       void_transaction = provider.build_do_void({
                                                     :AuthorizationID => transaction_id
                                                 })
@@ -72,12 +98,6 @@ module Spree
       end
       do_void_response
     end
-
-    def credit(credit_cents, transaction_id, _options)
-      payment = _options[:originator].payment
-      refund(payment, credit_cents.to_f / 100)
-    end
-
 
     def refund(payment, amount)
       refund_type = payment.amount == amount.to_f ? "Full" : "Partial"
@@ -97,17 +117,18 @@ module Spree
                                   :refund_type => refund_type
                               })
 
-        payment.class.create!(
-            :order => payment.order,
-            :source => payment,
-            :payment_method => payment.payment_method,
-            :amount => amount.to_f.abs * -1,
-            :response_code => refund_transaction_response.RefundTransactionID,
-            :state => 'completed'
-        )
+        # payment.class.create!(
+        #     :order => payment.order,
+        #     :source => payment,
+        #     :payment_method => payment.payment_method,
+        #     :amount => amount.to_f.abs * -1,
+        #     :response_code => refund_transaction_response.RefundTransactionID,
+        #     :state => 'completed'
+        # )
       end
       refund_transaction_response
     end
+
 
     private
 
