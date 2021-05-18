@@ -1,24 +1,19 @@
 module Spree
   class PaypalExpressCheckout < ActiveRecord::Base
     def actions
-      %w(void settle credit)
+      %w(capture void credit)
     end
 
-    def can_void?(_payment)
-      if _payment.pending? || _payment.checkout?
-        true
-      else
-        %w(authorized pending).include? state
-      end
-
+    def can_void?(payment)
+      !payment.failed? && !payment.void? && !payment.completed?
     end
 
-    def can_settle?(_)
-      %w(authorized).include? state
+    def can_capture?(payment)
+      payment.pending? || payment.checkout?
     end
 
-    def can_credit?(_payment)
-      %w(settled settling complete).include? state
+    def can_credit?(payment)
+      payment.completed? && payment.credit_allowed > 0
     end
 
   end

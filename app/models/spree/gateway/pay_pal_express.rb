@@ -30,10 +30,6 @@ module Spree
       provider_class.new
     end
 
-    def auto_capture?
-      true
-    end
-
     def method_type
       'paypal'
     end
@@ -48,66 +44,123 @@ module Spree
 
     def settle(amount, checkout, _gateway_options) end
 
-    def capture(amount, transaction_id, _gateway_options)
-      checkout = Spree::PaypalExpressCheckout.find_by(transaction_id: transaction_id)
-      @do_capture = provider.build_do_capture({
-                                                  :AuthorizationID => transaction_id,
-                                                  :CompleteType => "Complete",
-                                                  :Amount => {
-                                                      :currencyID => payment.currency,
-                                                      :value => amount},
-                                                  :RefundSource => "any"})
-      @do_capture_response = api.do_capture(@do_capture) if request.post?
+    def capture(credit_cents, transaction_id, _gateway_options)
+
+      payment_id = _gateway_options[:order_id].split('-')[-1]
+      payment = Spree::Payment.find_by(number: payment_id)
+      transaction_id = payment.source.transaction_id
+      params = {
+          :AuthorizationID => transaction_id,
+          :CompleteType => "Complete",
+          :Amount => {
+              :currencyID => _gateway_options[:currency],
+              :value => credit_cents.to_f / 100}
+      }
+
+      logger.info params
+
+      do_capture = provider.build_do_capture(params)
+      pp_response = provider.do_capture(do_capture)
+
+
+      if pp_response.success?
+        Spree::PaypalExpressCheckout.find_by(transaction_id: transaction_id).update(state: 'completed')
+
+        begin
+          transaction_id = pp_response.do_capture_response_details.payment_info.first.transaction_id
+        rescue
+          transaction_id = pp_response.do_capture_response_details.payment_info.transaction_id
+        end
+        logger.info transaction_id
+
+        Spree::PaypalExpressCheckout.find_by(transaction_id: transaction_id).update(state: 'completed', transaction_id: transaction_id)
+
+        Response.new(true, nil, {:id => transaction_id})
+      else
+        class << pp_response
+          def to_s
+            errors.map(&:long_message).join(" ")
+          end
+        end
+
+        pp_response
+      end
     end
 
 
     def credit(credit_cents, transaction_id, _options)
       payment = _options[:originator].payment
-      refund(payment, credit_cents.to_f / 100)
+      refund(transaction_id, payment, credit_cents)
     end
 
     def cancel(response_code, _source, payment)
       if response_code.nil?
-        logger.info payment.money.amount_in_cents
-        logger.info _source.transaction_id
         source = _source
       else
         source = Spree::PaypalExpressCheckout.find_by(token: response_code)
       end
 
       if payment.present? and source.can_credit? payment
-        refund(payment, payment.money.amount_in_cents.to_f / 100)
+        refund(nil, payment, payment.money.amount_in_cents)
       else
-        void(source, nil)
+        void(source.transaction_id, source, nil)
       end
-
-
     end
 
-    def void(source, _data)
-      transaction_id = source.transaction_id
-      logger.info source
-      logger.info transaction_id
+    def void(response_code, _source, gateway_options)
+
+      if _source.present?
+        source = _source
+      else
+        source = Spree::PaypalExpressCheckout.find_by(token: response_code)
+      end
+
       void_transaction = provider.build_do_void({
-                                                    :AuthorizationID => transaction_id
+                                                    :AuthorizationID => source.transaction_id
                                                 })
 
       do_void_response = provider.do_void(void_transaction)
+
+
       if do_void_response.success?
-        Spree::PaypalExpressCheckout.find_by(transaction_id: transaction_id).update(state: 'voided')
+        Spree::PaypalExpressCheckout.find_by(transaction_id: source.transaction_id).update(state: 'voided')
+        # This is rather hackish, required for payment/processing handle_response code.
+        Class.new do
+          def success?
+            true;
+          end
+
+          def authorization
+            nil;
+          end
+        end.new
+      else
+        class << do_void_response
+          def to_s
+            errors.map(&:long_message).join(" ")
+          end
+        end
+
+        do_void_response
       end
-      do_void_response
     end
 
-    def refund(payment, amount)
-      refund_type = payment.amount == amount.to_f ? "Full" : "Partial"
-      refund_transaction = provider.build_refund_transaction({
-                                                                 :TransactionID => payment.source.transaction_id,
-                                                                 :RefundType => refund_type,
-                                                                 :Amount => {
-                                                                     :currencyID => payment.currency,
-                                                                     :value => amount},
-                                                                 :RefundSource => "any"})
+    def refund(transaction_id, payment, credit_cents)
+      unless transaction_id.present?
+        transaction_id = payment.source.transaction_id
+      end
+
+      refund_type = payment.money.amount_in_cents == credit_cents ? "Full" : "Partial"
+      params = {
+          :TransactionID => transaction_id,
+          :RefundType => refund_type,
+          :Amount => {
+              :currencyID => payment.currency,
+              :value => credit_cents.to_f / 100},
+          :RefundSource => "any"}
+      logger.info params
+
+      refund_transaction = provider.build_refund_transaction(params)
       refund_transaction_response = provider.refund_transaction(refund_transaction)
       if refund_transaction_response.success?
         payment.source.update({
@@ -116,15 +169,6 @@ module Spree
                                   :state => "refunded",
                                   :refund_type => refund_type
                               })
-
-        # payment.class.create!(
-        #     :order => payment.order,
-        #     :source => payment,
-        #     :payment_method => payment.payment_method,
-        #     :amount => amount.to_f.abs * -1,
-        #     :response_code => refund_transaction_response.RefundTransactionID,
-        #     :state => 'completed'
-        # )
       end
       refund_transaction_response
     end
@@ -148,21 +192,21 @@ module Spree
                                                               })
 
       pp_response = provider.do_express_checkout_payment(pp_request)
+
+
       if pp_response.success?
         # We need to store the transaction id for the future.
         # This is mainly so we can use it later on to refund the payment if the user wishes.
-        transaction_id = pp_response.do_express_checkout_payment_response_details.payment_info.first.transaction_id
-        express_checkout.update_column(:transaction_id, transaction_id)
-        # This is rather hackish, required for payment/processing handle_response code.
-        Class.new do
-          def success?
-            true;
-          end
+        begin
+          transaction_id = pp_response.do_express_checkout_payment_response_details.payment_info.first.transaction_id
+        rescue
+          transaction_id = pp_response.do_express_checkout_payment_response_details.payment_info.transaction_id
+        end
 
-          def authorization
-            nil;
-          end
-        end.new
+        express_checkout.update_column(:transaction_id, transaction_id)
+
+        Response.new(true, nil, {:id => transaction_id})
+
       else
         class << pp_response
           def to_s
@@ -170,7 +214,8 @@ module Spree
           end
         end
 
-        pp_response
+        Response.new(false, pp_response, nil)
+
       end
     end
   end
