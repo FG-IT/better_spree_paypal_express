@@ -67,15 +67,15 @@ module Spree
         Spree::PaypalExpressCheckout.find_by(transaction_id: transaction_id).update(state: 'completed')
 
         begin
-          transaction_id = pp_response.do_capture_response_details.payment_info.first.transaction_id
+          new_transaction_id = pp_response.do_capture_response_details.payment_info.first.transaction_id
         rescue
-          transaction_id = pp_response.do_capture_response_details.payment_info.transaction_id
+          new_transaction_id = pp_response.do_capture_response_details.payment_info.transaction_id
         end
-        logger.info transaction_id
+        logger.info new_transaction_id
 
-        Spree::PaypalExpressCheckout.find_by(transaction_id: transaction_id).update(state: 'completed', transaction_id: transaction_id)
+        Spree::PaypalExpressCheckout.find_by(transaction_id: transaction_id).update(state: 'completed', transaction_id: new_transaction_id)
 
-        Response.new(true, nil, {:id => transaction_id})
+        Response.new(true, nil, {:id => new_transaction_id})
       else
         class << pp_response
           def to_s
